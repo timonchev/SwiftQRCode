@@ -6,6 +6,14 @@
 //  Copyright (c) 2015年 joyios. All rights reserved.
 //
 
+
+//
+//  QRCode.swift
+//  QRCode
+//
+//  Created by 刘凡 on 15/5/15.
+//  Copyright (c) 2015年 joyios. All rights reserved.
+//
 import UIKit
 import AVFoundation
 
@@ -90,7 +98,7 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         qrFilter.setDefaults()
         qrFilter.setValue(stringValue.data(using: String.Encoding.utf8, allowLossyConversion: false), forKey: "inputMessage")
         
-        let ciImage = qrFilter.outputImage
+        guard let ciImage = qrFilter.outputImage else { return nil }
         
         // scale qrcode image
         let colorFilter = CIFilter(name: "CIFalseColor")!
@@ -100,7 +108,7 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         colorFilter.setValue(backColor, forKey: "inputColor1")
         
         let transform = CGAffineTransform(scaleX: 10, y: 10)
-        let transformedImage = qrFilter.outputImage!.transformed(by: transform)
+        let transformedImage = ciImage.transformed(by: transform)
         
         let image = UIImage(ciImage: transformedImage)
         
@@ -179,7 +187,12 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
             return
         }
         
-        if !session.canAddInput(videoInput!) {
+        guard let videoInput = videoInput else {
+            print("unable to retrieve device input")
+            return
+        }
+        
+        if !session.canAddInput(videoInput) {
             print("can not add input device")
             return
         }
@@ -189,14 +202,14 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
             return
         }
         
-        session.addInput(videoInput!)
+        session.addInput(videoInput)
         session.addOutput(dataOutput)
         
         dataOutput.metadataObjectTypes = dataOutput.availableMetadataObjectTypes;
         dataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
     }
     
-    open func captureOutput(_ captureOutput: AVCaptureOutput!, didOutputMetadataObjects metadataObjects: [Any]!, from connection: AVCaptureConnection!) {
+    open func metadataOutput(_ captureOutput: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
         
         clearDrawLayer()
         
@@ -204,13 +217,15 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
             
             if let codeObject = dataObject as? AVMetadataMachineReadableCodeObject,
                 let obj = previewLayer.transformedMetadataObject(for: codeObject) as? AVMetadataMachineReadableCodeObject {
-
+                
                 if scanFrame.contains(obj.bounds) {
                     currentDetectedCount = currentDetectedCount + 1
                     if currentDetectedCount > maxDetectedCount {
                         session.stopRunning()
                         
-                        completedCallBack!(codeObject.stringValue!)
+                        if let stringValue = codeObject.stringValue {
+                            completedCallBack?(stringValue)
+                        }
                         
                         if autoRemoveSubLayers {
                             removeAllLayers()
@@ -248,21 +263,21 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         shapeLayer.lineWidth = lineWidth
         shapeLayer.strokeColor = strokeColor.cgColor
         shapeLayer.fillColor = UIColor.clear.cgColor
-        shapeLayer.path = createPath(codeObject.corners as NSArray).cgPath
+        shapeLayer.path = createPath(codeObject.corners).cgPath
         
         drawLayer.addSublayer(shapeLayer)
     }
     
-    func createPath(_ points: NSArray) -> UIBezierPath {
+    func createPath(_ points: [CGPoint]) -> UIBezierPath {
         let path = UIBezierPath()
-
-        var point = CGPoint(dictionaryRepresentation: points[0] as! CFDictionary)
-        path.move(to: point!)
+        
+        var point = points[0]
+        path.move(to: point)
         
         var index = 1
         while index < points.count {
-            point = CGPoint(dictionaryRepresentation: points[index] as! CFDictionary)
-            path.addLine(to: point!)
+            point = points[index]
+            path.addLine(to: point)
             
             index = index + 1
         }
@@ -276,7 +291,7 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         let layer = AVCaptureVideoPreviewLayer(session: self.session)
         layer.videoGravity = AVLayerVideoGravity.resizeAspectFill
         return layer
-        }()
+    }()
     
     /// drawLayer
     lazy var drawLayer = CALayer()
@@ -289,7 +304,7 @@ open class QRCode: NSObject, AVCaptureMetadataOutputObjectsDelegate {
             return try? AVCaptureDeviceInput(device: device)
         }
         return nil
-        }()
+    }()
     
     /// output
     lazy var dataOutput = AVCaptureMetadataOutput()
